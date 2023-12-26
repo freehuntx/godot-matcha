@@ -3,7 +3,7 @@ Easy webrtc matchmaking using WebTorrent tracker.
 This project uses webtorrent to do signaling. This allows you to connect players peer2peer without a server!  
 I plan on improving this library and add more features. Stay tuned!
 
-### [Try the demo here](https://freehuntx.github.io/godot-matcha/) (Currently not working)
+### [Try the demo here](https://freehuntx.github.io/godot-matcha/)
 
 ## Installation
 1. Copy `addons/matcha` to your godot project.
