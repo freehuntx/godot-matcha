@@ -19,24 +19,24 @@ var room1 := MatchaRoom.new({ "identifier": "my-unique-game-identifier" })
 var room2 := MatchaRoom.new({ "identifier": "my-unique-game-identifier" })
 
 func _init():
-  var rtc1: WebRTCMultiplayerPeer = room1.rtc_peer
-  var rtc2: WebRTCMultiplayerPeer = room1.rtc_peer
+	var rtc1: WebRTCMultiplayerPeer = room1.rtc_peer
+	var rtc2: WebRTCMultiplayerPeer = room1.rtc_peer
 
-  rtc1.peer_connected.connect(func(id):
-    print("(1) Peer connected: ", id)
-  )
+	rtc1.peer_connected.connect(func(id):
+		print("(1) Peer connected: ", id)
+	)
 
-  rtc1.peer_disconnected.connect(func(id):
-    print("(1) Peer disconnected: ", id)
-  )
+	rtc1.peer_disconnected.connect(func(id):
+		print("(1) Peer disconnected: ", id)
+	)
 
-  rtc2.peer_connected.connect(func(id):
-    print("(2) Peer connected: ", id)
-  )
+	rtc2.peer_connected.connect(func(id):
+		print("(2) Peer connected: ", id)
+	)
 
-  rtc2.peer_disconnected.connect(func(id):
-    print("(2) Peer disconnected: ", id)
-  )
+	rtc2.peer_disconnected.connect(func(id):
+		print("(2) Peer disconnected: ", id)
+	)
 ```
 
 # Changelog

@@ -66,7 +66,7 @@ func _poll():
 		if _peer.get_gathering_state() == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
 			_gathered = true
 			_connecting = true
-			_peer.set_local_description(_type, _local_sdp)
+			#_peer.set_local_description(_type, _local_sdp)
 			sdp_created.emit(_local_sdp)
 	if _connecting:
 		var state := _peer.get_connection_state()
@@ -91,6 +91,7 @@ func _poll():
 
 func _on_sdp_created(type: String, sdp: String):
 	_local_sdp = sdp
+	_peer.set_local_description(_type, sdp)
 
 func _on_icecandidate_created(media: String, index: int, name: String):
 	_local_sdp += "a=%s\r\n" % [name]
