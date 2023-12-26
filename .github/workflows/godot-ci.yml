@@ -1,6 +1,6 @@
 # Workflow to publish Godot HTML5 games to GitHub Pages
 #
-# Make sure your project is configured for Web export to the path `build/web`.
+# Make sure your project is configured for Web export to the path `export/web`.
 
 name: 'Publish to GitHub Pages'
 
@@ -32,12 +32,12 @@ jobs:
 
       - name: Web Build
         run: |
-          mkdir -v -p build/web
+          mkdir -v -p export/web
           godot --export-release --headless "Web" project.godot
 
 #      - name: Compress project
 #        run: |
-#          cd build/web
+#          cd export/web
 #          wget https://raw.githubusercontent.com/nodeca/pako/master/dist/pako_inflate.min.js
 #          gzip -f index.wasm
 #          gzip -f index.pck
@@ -51,11 +51,11 @@ jobs:
       - name: Add coi-service-worker
         run: |
           git clone https://github.com/gzuidhof/coi-serviceworker.git
-          mv coi-serviceworker/coi-serviceworker.js build/web/coi-serviceworker.js
-          sed -i '3 i <script src="coi-serviceworker.js"></script>' build/web/index.html
+          mv coi-serviceworker/coi-serviceworker.js export/web/coi-serviceworker.js
+          sed -i '3 i <script src="coi-serviceworker.js"></script>' export/web/index.html
  
       - name: Deploy to GitHub Pages 🚀
         uses: JamesIves/github-pages-deploy-action@releases/v4
         with:
           branch: gh-pages # The branch the action should deploy to.
-          folder: build/web # The folder the action should deploy.
+          folder: export/web # The folder the action should deploy.
