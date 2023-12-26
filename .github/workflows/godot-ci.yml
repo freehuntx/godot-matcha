@@ -1,0 +1,61 @@
+# Workflow to publish Godot HTML5 games to GitHub Pages
+#
+# Make sure your project is configured for Web export to the path `build/web`.
+
+name: 'Publish to GitHub Pages'
+
+env:
+  GODOT_VERSION: 4.1.3 # Remember to manually set image to this version below.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+
+jobs:
+  export-web:
+    name: Web Export
+    runs-on: ubuntu-20.04
+
+    container:
+      image: barichello/godot-ci:4.1.3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Web Build
+        run: |
+          mkdir -v -p build/web
+          godot --export-release --headless "Web" project.godot
+
+#      - name: Compress project
+#        run: |
+#          cd build/web
+#          wget https://raw.githubusercontent.com/nodeca/pako/master/dist/pako_inflate.min.js
+#          gzip -f index.wasm
+#          gzip -f index.pck
+#          FIND="<script type='text/javascript' src='index.js'></script>"
+#          REPLACE="<script type=\"text/javascript\" src=\"pako_inflate.min.js\"></script>$FIND"
+#          sed -i -e "s@$FIND@$REPLACE@" index.html
+#          FIND="function loadXHR(resolve, reject, file, tracker) {"
+#          REPLACE=$FIND" if (file.substr(-5) === '.wasm' || file.substr(-4) === '.pck') { file += '.gz'; var resolve_orig = resolve; resolve = function(xhr) { return resolve_orig(xhr.responseURL.substr(-3) === '.gz' ? { response: pako.inflate(xhr.response), responseType: xhr.responseType, responseURL: xhr.responseURL, status: xhr.status, statusText: xhr.statusText } : xhr); }; }"
+#          sed -i -e "s@$FIND@$REPLACE@" index.js
+
+      - name: Add coi-service-worker
+        run: |
+          git clone https://github.com/gzuidhof/coi-serviceworker.git
+          mv coi-serviceworker/coi-serviceworker.js build/web/coi-serviceworker.js
+          sed -i '3 i <script src="coi-serviceworker.js"></script>' build/web/index.html
+ 
+      - name: Deploy to GitHub Pages 🚀
+        uses: JamesIves/github-pages-deploy-action@releases/v4
+        with:
+          branch: gh-pages # The branch the action should deploy to.
+          folder: build/web # The folder the action should deploy.

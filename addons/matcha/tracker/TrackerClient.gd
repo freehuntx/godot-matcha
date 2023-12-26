@@ -1,6 +1,14 @@
-extends "./EventEmitter.gd"
-const WebSocketClient := preload("./WebSocketClient.gd")
-const Utils := preload("./Utils.gd")
+extends RefCounted
+const Utils := preload("../lib/Utils.gd")
+const WebSocketClient := preload("../lib/WebSocketClient.gd")
+
+# Signals
+signal connected
+signal disconnected
+signal reconnecting
+signal failure(reason: String)
+signal offer(offer: Dictionary)
+signal answer(answer: Dictionary)
 
 # Members
 var _socket: WebSocketClient
@@ -24,15 +32,15 @@ func _init(options:={}) -> void:
 		"mode": WebSocketClient.Mode.JSON,
 		"reconnect_time": 3
 	})
-	_socket.on("connected", self._on_tracker_connected)
-	_socket.on("disconnected", self._on_tracker_disconnected)
-	_socket.on("reconnecting", self._on_tracker_reconnecting)
-	_socket.on("message", self._on_tracker_message)
+	_socket.connected.connect(self._on_tracker_connected)
+	_socket.disconnected.connect(self._on_tracker_disconnected)
+	_socket.reconnecting.connect(self._on_tracker_reconnecting)
+	_socket.message.connect(self._on_tracker_message)
 
 # Public methods
 func send_answer(info_hash: String, answer: Dictionary) -> void:
 	if not is_connected:
-		once("connected", send_answer.bind(info_hash, answer))
+		connected.connect(send_answer.bind(info_hash, answer), CONNECT_ONE_SHOT)
 		return
 	_socket.send({
 		"action": "announce",
@@ -48,45 +56,50 @@ func send_answer(info_hash: String, answer: Dictionary) -> void:
 
 func announce(info_hash: String, offers: Array) -> void:
 	if not is_connected:
-		once("connected", announce.bind(info_hash, offers))
+		connected.connect(announce.bind(info_hash, offers), CONNECT_ONE_SHOT)
 		return
+
+	var announce_offers := []
+	for offer in offers:
+		announce_offers.append(offer)
+
 	_socket.send({
 		"action": "announce",
 		"info_hash": info_hash,
 		"peer_id": _options.peer_id,
-		"numwant": offers.size(),
-		"offers": offers
+		"numwant": announce_offers.size(),
+		"offers": announce_offers
 	})
 
 # Private methods
 func _on_tracker_connected() -> void:
-	emit("connected")
+	connected.emit()
 
 func _on_tracker_disconnected() -> void:
-	emit("disconnected")
+	disconnected.emit()
 
 func _on_tracker_reconnecting() -> void:
-	emit("reconnecting")
+	reconnecting.emit()
 
 func _on_tracker_message(data) -> void:
 	if not typeof(data) == TYPE_DICTIONARY: return
 	if "failure reason" in data:
-		emit("failure", [data["failure reason"]])
+		failure.emit(data["failure reason"])
 		return
 	if not "action" in data or data.action != "announce": return
 	if not "info_hash" in data: return
 	if "peer_id" in data and "offer_id" in data:
 		if "offer" in data:
-			emit("offer", [{
+			offer.emit({
 				"info_hash": data.info_hash,
 				"peer_id": data.peer_id,
 				"offer_id": data.offer_id,
 				"sdp": data.offer.sdp
-			}])
+			})
 		if "answer" in data:
-			emit("answer", [{
+			answer.emit({
 				"info_hash": data.info_hash,
 				"peer_id": data.peer_id,
 				"offer_id": data.offer_id,
 				"sdp": data.answer.sdp
-			}])
+			})

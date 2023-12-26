@@ -1,4 +1,11 @@
-extends "./EventEmitter.gd"
+extends RefCounted
+
+# Signals
+signal disconnected
+signal reconnecting
+signal connecting
+signal connected
+signal message(data)
 
 # Constants
 enum Mode { BYTES, TEXT, JSON }
@@ -47,10 +54,10 @@ func close(was_error=false) -> void:
 		_state = State.DISCONNECTED
 	if _state == State.CONNECTED:
 		_state = State.DISCONNECTED
-		emit("disconnected")
+		disconnected.emit()
 	if was_error and _state != State.RECONNECTING and "reconnect_time" in _options:
 		_state = State.RECONNECTING
-		emit("reconnecting")
+		reconnecting.emit()
 		Engine.get_main_loop().create_timer(_options.reconnect_time).timeout.connect(func():
 			_state = State.DISCONNECTED
 			_start()
@@ -68,7 +75,7 @@ func _start() -> void:
 		close(true)
 		return
 	_state = State.CONNECTING
-	emit("connecting")
+	connecting.emit()
 
 func _poll() -> void:
 	if _socket == null: return
@@ -81,17 +88,17 @@ func _poll() -> void:
 		return
 	if _state != State.CONNECTED:
 		_state = State.CONNECTED
-		emit("connected")
+		connected.emit()
 
 	while _socket.get_available_packet_count():
 		_on_packet(_socket.get_packet())
 
 func _on_packet(buffer: PackedByteArray) -> void:
 	if _options.mode == Mode.BYTES:
-		emit("message", [buffer])
+		message.emit(buffer)
 	elif _options.mode == Mode.TEXT:
-		emit("message", [buffer.get_string_from_utf8()])
+		message.emit(buffer.get_string_from_utf8())
 	elif _options.mode == Mode.JSON:
 		var data = JSON.parse_string(buffer.get_string_from_utf8())
 		if data == null: assert(false, "INVALID_JSON")
-		emit("message", [data])
+		message.emit(data)

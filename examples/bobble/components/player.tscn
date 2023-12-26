@@ -1,0 +1,39 @@
+[gd_scene load_steps=5 format=3 uid="uid://bfl4yqr1c4mcq"]
+
+[ext_resource type="Script" path="res://examples/bobble/components/player.gd" id="1_co5g2"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_368qq"]
+size = Vector2(30, 30)
+
+[sub_resource type="CanvasTexture" id="CanvasTexture_8dapy"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_j4wkt"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:velocity")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath("Label:text")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+
+[node name="Player" type="CharacterBody2D"]
+script = ExtResource("1_co5g2")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_368qq")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+scale = Vector2(30, 30)
+texture = SubResource("CanvasTexture_8dapy")
+
+[node name="Label" type="Label" parent="."]
+offset_left = -123.0
+offset_top = 13.0
+offset_right = 123.0
+offset_bottom = 136.0
+horizontal_alignment = 1
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_j4wkt")

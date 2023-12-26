@@ -5,7 +5,8 @@ I plan on improving this library and add more features. Stay tuned!
 
 ## Installation
 1. Copy `addons/matcha` to your godot project.
-2. Done!
+2. For non browser builds: Install [webrtc-native](https://github.com/godotengine/webrtc-native)
+3. Done!
 
 ## Usage
 Example:

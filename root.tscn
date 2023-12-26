@@ -4,3 +4,12 @@
 
 [node name="root" type="Node2D"]
 script = ExtResource("1_5f6ns")
+
+[node name="bobble_btn" type="Button" parent="."]
+offset_left = 508.0
+offset_top = 208.0
+offset_right = 612.0
+offset_bottom = 239.0
+text = "Start bobble"
+
+[connection signal="pressed" from="bobble_btn" to="." method="_on_bobble_btn_pressed"]
