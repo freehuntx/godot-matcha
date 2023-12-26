@@ -59,16 +59,12 @@ func announce(info_hash: String, offers: Array) -> void:
 		connected.connect(announce.bind(info_hash, offers), CONNECT_ONE_SHOT)
 		return
 
-	var announce_offers := []
-	for offer in offers:
-		announce_offers.append(offer)
-
 	_socket.send({
 		"action": "announce",
 		"info_hash": info_hash,
 		"peer_id": _options.peer_id,
-		"numwant": announce_offers.size(),
-		"offers": announce_offers
+		"numwant": offers.size(),
+		"offers": offers
 	})
 
 # Private methods

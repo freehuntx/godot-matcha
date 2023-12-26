@@ -9,6 +9,7 @@ const OFFER_TIMEOUT := 30
 # Members
 var _tracker_clients: Array[TrackerClient] = []
 var _info_hash: String
+var _peer_id := Utils.gen_id()
 var _rtc_peer := WebRTCMultiplayerPeer.new()
 var _rtc_peer_id: int
 var _peers := {}
@@ -29,7 +30,7 @@ func _init(options:={}) -> void:
 	_rtc_peer.create_mesh(_rtc_peer_id)
 
 	for tracker_url in tracker_urls:
-		var tracker_client := TrackerClient.new({ "tracker_url": tracker_url })
+		var tracker_client := TrackerClient.new({ "tracker_url": tracker_url, "peer_id": _peer_id })
 		tracker_client.offer.connect(self._on_offer.bind(tracker_client))
 		tracker_client.answer.connect(self._on_answer.bind(tracker_client))
 		tracker_client.failure.connect(self._on_failure.bind(tracker_client))
@@ -70,6 +71,10 @@ func _create_offers() -> void:
 	for i in range(POOL_SIZE):
 		_create_offer()
 
+func _cleanup_peer_id(peer_id: String):
+	if peer_id in _peers:
+		_peers.erase(peer_id)
+
 func _handle_offers_announcment():
 	if _offers.size() == 0: return # No announcements needed if we have no offers
 
@@ -87,25 +92,9 @@ func _on_offer(offer: Dictionary, tracker_client: TrackerClient) -> void:
 	if offer.peer_id in _peers: return # Ignore the offer if we know the peer already
 
 	var peer := MatchaPeer.new(_rtc_peer)
-	peer.disconnected.connect(func():
-		if not offer.peer_id in _peers: return
-		_peers.erase(offer.peer_id)
-	)
-	peer.connecting_failed.connect(func():
-		if not offer.peer_id in _peers: return
-		_peers.erase(offer.peer_id)
-	)
-	peer.sdp_created.connect(func(sdp):
-		tracker_client.send_answer(_info_hash, {
-			"peer_id": offer.peer_id,
-			"offer_id": offer.offer_id,
-			"sdp": sdp
-		})
-	)
-	# TODO: Find a cleaner way for this whole cleanup step
-	unreference()
-	unreference()
-	unreference()
+	peer.disconnected.connect(self._cleanup_peer_id.bind(offer.peer_id))
+	peer.connecting_failed.connect(self._cleanup_peer_id.bind(offer.peer_id))
+	peer.sdp_created.connect(self._send_answer_sdp.bind(offer.peer_id, offer.offer_id, tracker_client))
 	peer.create_answer(offer.sdp)
 	_peers[offer.peer_id] = peer
 
@@ -118,5 +107,12 @@ func _on_answer(answer: Dictionary, tracker_client: TrackerClient) -> void:
 	_peers[answer.peer_id] = offer.peer
 	offer.peer.set_answer(answer.sdp)
 
+func _send_answer_sdp(answer_sdp: String, peer_id: String, offer_id: String, tracker_client: TrackerClient):
+	tracker_client.send_answer(_info_hash, {
+		"peer_id": peer_id,
+		"offer_id": offer_id,
+		"sdp": answer_sdp
+	})
+
 func _on_failure(reason: String, tracker_client: TrackerClient) -> void:
-	pass
+	print("Tracker failure: ", reason, ", Tracker: ", tracker_client.tracker_url)
