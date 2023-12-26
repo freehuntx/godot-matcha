@@ -3,7 +3,6 @@ const Utils := preload("res://addons/matcha/lib/Utils.gd")
 const TrackerClient := preload("./tracker/TrackerClient.gd")
 const MatchaPeer := preload("./MatchaPeer.gd")
 const POOL_SIZE := 10
-const POLL_INTERVAL := 0.1
 const OFFER_TIMEOUT := 30
 
 # Members
@@ -12,8 +11,7 @@ var _info_hash: String
 var _peer_id := Utils.gen_id()
 var _rtc_peer := WebRTCMultiplayerPeer.new()
 var _rtc_peer_id: int
-var _peers := {}
-var _offers := {}
+var _peers: Array[MatchaPeer] = []
 
 # Getters
 var rtc_peer:
@@ -36,79 +34,77 @@ func _init(options:={}) -> void:
 		tracker_client.failure.connect(self._on_failure.bind(tracker_client))
 		_tracker_clients.append(tracker_client)
 
-	_poll() # Starts the poll loop
+	Engine.get_main_loop().process_frame.connect(self._poll)
 
 # Private methods
 func _poll():
 	_rtc_peer.poll()
-	_cleanup_offers()
 	_create_offers()
 	_handle_offers_announcment()
 
-	Engine.get_main_loop().create_timer(POLL_INTERVAL).timeout.connect(self._poll) # Run poll in x seconds again
+func _remove_offer(offer_id: String) -> void:
+	for peer in _peers:
+		if peer.offer_id != offer_id: continue
+		peer.close()
+		_peers.erase(peer)
 
-func _cleanup_offers() -> void:
-	var current_time := Time.get_unix_time_from_system()
-	for offer in _offers.values():
-		if current_time - offer.created_at > OFFER_TIMEOUT:
-			offer.peer.close()
-			_offers.erase(offer.id)
+func _remove_peer_id(peer_id: String) -> void:
+	for peer in _peers:
+		if peer.peer_id != peer_id: continue
+		peer.close()
+		_peers.erase(peer)
 
 func _create_offer() -> void:
-	var offer = {
-		"id": Utils.gen_id(),
-		"peer": MatchaPeer.new(_rtc_peer),
-		"announced": false,
-		"created_at": Time.get_unix_time_from_system()
-	}
-	if offer.peer.create_offer() != OK:
-		return
-	_offers[offer.id] = offer
+	var offer_peer := MatchaPeer.new(_rtc_peer)
+	if offer_peer.create_offer() != OK: return
+	offer_peer.closed.connect(self._remove_offer.bind(offer_peer.offer_id))
+	_peers.append(offer_peer)
+
+	Engine.get_main_loop().create_timer(OFFER_TIMEOUT).timeout.connect(self._remove_offer.bind(offer_peer.offer_id))
 
 func _create_offers() -> void:
-	if _offers.size() > 0: return
+	var unanswered_offers := _peers.filter(func(p): return p.type == "offer" and not p.answered)
+	if unanswered_offers.size() > 0: return # There are ongoing offers. Dont refresh the pool.
 
 	for i in range(POOL_SIZE):
 		_create_offer()
 
-func _cleanup_peer_id(peer_id: String):
-	if peer_id in _peers:
-		_peers.erase(peer_id)
-
 func _handle_offers_announcment():
-	if _offers.size() == 0: return # No announcements needed if we have no offers
+	var unannounced_offers := _peers.filter(func(p): return p.type == "offer" and not p.announced)
+	if unannounced_offers.size() == 0: return # There are no offers to announce
 
 	var announce_offers := [] # The array we need for the tracker offer announcements
-	for offer in _offers.values():
-		if not offer.peer.gathered: return # If we have ungathered offers we are not ready yet to announce.
-		if offer.announced: return # If we have announced offers something is wrong. We stop the announcement then.
-		announce_offers.append({ "offer_id": offer.id, "offer": { "type": "offer", "sdp": offer.peer.local_sdp } })
-	for offer in _offers.values():
-		offer.announced = true # Mark the offer as announced
+	for offer_peer in unannounced_offers:
+		if not offer_peer.gathered: return # If we have ungathered offers we are not ready yet to announce.
+		announce_offers.append({ "offer_id": offer_peer.offer_id, "offer": { "type": "offer", "sdp": offer_peer.local_sdp } })
+	for offer_peer in unannounced_offers:
+		offer_peer.announced = true # Mark the offer as announced
 	for tracker_client in _tracker_clients: # Announce the offers via every tracker
 		tracker_client.announce(_info_hash, announce_offers)
 
 func _on_offer(offer: Dictionary, tracker_client: TrackerClient) -> void:
-	if offer.peer_id in _peers: return # Ignore the offer if we know the peer already
+	for peer in _peers:
+		if peer.peer_id == offer.peer_id: return
 
 	var peer := MatchaPeer.new(_rtc_peer)
-	peer.disconnected.connect(self._cleanup_peer_id.bind(offer.peer_id))
-	peer.connecting_failed.connect(self._cleanup_peer_id.bind(offer.peer_id))
+	peer.peer_id = offer.peer_id
+	peer.offer_id = offer.offer_id
 	peer.sdp_created.connect(self._send_answer_sdp.bind(offer.peer_id, offer.offer_id, tracker_client))
+	peer.closed.connect(self._remove_offer.bind(offer.offer_id))
 	peer.create_answer(offer.sdp)
-	_peers[offer.peer_id] = peer
+	_peers.append(peer)
 
 func _on_answer(answer: Dictionary, tracker_client: TrackerClient) -> void:
-	if not answer.offer_id in _offers: return
-	var offer = _offers[answer.offer_id]
-	_offers.erase(answer.offer_id)
-	
-	if answer.peer_id in _peers: return
+	var offer: MatchaPeer
+	for peer in _peers:
+		if peer.peer_id == answer.peer_id: return
+		if peer.type != "offer" or peer.offer_id != answer.offer_id or peer.answered: continue
+		offer = peer
+		break
 
-	offer.peer.disconnected.connect(self._cleanup_peer_id.bind(answer.peer_id))
-	offer.peer.connecting_failed.connect(self._cleanup_peer_id.bind(answer.peer_id))
-	_peers[answer.peer_id] = offer.peer
-	offer.peer.set_answer(answer.sdp)
+	if offer == null: return
+	offer.peer_id = answer.peer_id
+	offer.set_answer(answer.sdp)
 
 func _send_answer_sdp(answer_sdp: String, peer_id: String, offer_id: String, tracker_client: TrackerClient):
 	tracker_client.send_answer(_info_hash, {

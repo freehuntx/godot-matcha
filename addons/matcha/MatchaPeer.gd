@@ -1,28 +1,40 @@
 extends RefCounted
+const Utils := preload("./lib/Utils.gd")
 
 # Signals
 signal connected
 signal connecting_failed
 signal disconnected
+signal closed
 signal sdp_created(sdp: String)
 
 # Members
+var announced := false
+var peer_id: String
+var offer_id: String
 var _peer: WebRTCPeerConnection
 var _gathered := false
 var _connecting := false
 var _connected := false
+var _answered := false
 var _type: String
 var _local_sdp: String
 var _remote_sdp: String
 var _rtc_peer: WebRTCMultiplayerPeer
 var _rtc_peer_id: int
 
+var type:
+	get: return _type
 var peer:
 	get: return _peer
 var gathered:
 	get: return _gathered
+var answered:
+	get: return _answered
 var local_sdp:
 	get: return _local_sdp
+var rtc_peer_id:
+	get: return _rtc_peer_id
 
 # Constructor
 func _init(rtc_peer: WebRTCMultiplayerPeer):
@@ -33,40 +45,46 @@ func _init(rtc_peer: WebRTCMultiplayerPeer):
 	_peer.session_description_created.connect(self._on_sdp_created)
 	_peer.ice_candidate_created.connect(self._on_icecandidate_created)
 	_rtc_peer.add_peer(_peer, _rtc_peer_id)
-	_poll()
+	Engine.get_main_loop().process_frame.connect(self._poll)
 
 # Public methods
 func close():
-	if _rtc_peer.has_peer(_rtc_peer_id):
-		_rtc_peer.remove_peer(_rtc_peer_id)
+	if _peer == null: return
+	_peer.close()
+	_peer = null
+	closed.emit()
 
 func set_answer(remote_sdp: String):
 	assert(_type == "offer", "The peer is not an offer")
-	assert(_remote_sdp == "", "The offer was already answered")
+	assert(not _answered, "The offer was already answered")
+	_answered = true
 	_remote_sdp = remote_sdp
-	_peer.set_remote_description("answer", remote_sdp)
+	if _peer != null:
+		_peer.set_remote_description("answer", remote_sdp)
 
 func create_offer() -> Error:
 	assert(_type == "", "The peer is already in use")
 	_type = "offer"
+	offer_id = Utils.gen_id()
 	var err := _peer.create_offer()
 	if err != OK:
 		close()
 	return err
 
 func create_answer(remote_sdp: String):
+	assert(_peer != null, "The peer null")
 	assert(_type == "", "The peer is already in use")
 	_type = "answer"
 	_peer.set_remote_description("offer", remote_sdp)
 
 # Private methods
 func _poll():
-	_peer.poll()
+	if _peer == null: return
+
 	if not _gathered:
 		if _peer.get_gathering_state() == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
 			_gathered = true
 			_connecting = true
-			#_peer.set_local_description(_type, _local_sdp)
 			sdp_created.emit(_local_sdp)
 	if _connecting:
 		var state := _peer.get_connection_state()
@@ -86,8 +104,6 @@ func _poll():
 			disconnected.emit()
 			close()
 			return
-
-	Engine.get_main_loop().create_timer(0.1).timeout.connect(self._poll)
 
 func _on_sdp_created(type: String, sdp: String):
 	_local_sdp = sdp

@@ -12,4 +12,13 @@ offset_right = 612.0
 offset_bottom = 239.0
 text = "Start bobble"
 
+[node name="lobby_btn" type="Button" parent="."]
+visible = false
+offset_left = 515.0
+offset_top = 267.0
+offset_right = 608.0
+offset_bottom = 298.0
+text = "Start lobby"
+
 [connection signal="pressed" from="bobble_btn" to="." method="_on_bobble_btn_pressed"]
+[connection signal="pressed" from="lobby_btn" to="." method="_on_lobby_btn_pressed"]
