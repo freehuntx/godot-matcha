@@ -104,6 +104,9 @@ func _on_answer(answer: Dictionary, tracker_client: TrackerClient) -> void:
 	_offers.erase(answer.offer_id)
 	
 	if answer.peer_id in _peers: return
+
+	offer.peer.disconnected.connect(self._cleanup_peer_id.bind(answer.peer_id))
+	offer.peer.connecting_failed.connect(self._cleanup_peer_id.bind(answer.peer_id))
 	_peers[answer.peer_id] = offer.peer
 	offer.peer.set_answer(answer.sdp)
 
