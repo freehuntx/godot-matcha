@@ -5,7 +5,10 @@
 class_name Secp256k1 extends RefCounted
 
 func uint256(x, base:=-1):
-	assert(base == -1, "Base not implemented!")
+	if base != -1:
+		push_error("Base not implemented!")
+		return
+
 	return Big.new(x)
 
 func _init():

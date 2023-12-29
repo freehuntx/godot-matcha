@@ -1,6 +1,6 @@
 # TODO: DOCUMENT, DOCUMENT, DOCUMENT!
 
-class_name MatchaPeer extends WebRTCPeerConnectionExtension
+class_name MatchaPeer extends WebRTCPeerConnection
 const Utils := preload("./lib/Utils.gd")
 
 enum State { NEW, GATHERING, CONNECTING, CONNECTED, CLOSED }
@@ -15,7 +15,6 @@ signal sdp_created(sdp: String)
 
 # Members
 var _announced := false
-var _peer := WebRTCPeerConnection.new()
 var _peer_id: String
 var _offer_id: String
 var _state := State.NEW
@@ -45,58 +44,113 @@ var peer_id:
 static func create_offer_peer(offer_id := Utils.gen_id()) -> MatchaPeer:
 	return MatchaPeer.new("offer", offer_id)
 
-static func create_answer_peer(offer_id: String, offer_sdp: String) -> MatchaPeer:
-	return MatchaPeer.new("answer", offer_id, offer_sdp)
+static func create_answer_peer(offer_id: String, remote_sdp: String) -> MatchaPeer:
+	return MatchaPeer.new("answer", offer_id, remote_sdp)
 
 # Constructor
-func _init(type: String, offer_id: String, sdp=""):
-	assert(type == "offer" or type == "answer", "Invalid type: %s" % [type])
+func _init(type: String, offer_id: String, remote_sdp=""):
 	_type = type
 	_offer_id = offer_id
+	_remote_sdp = remote_sdp
 
-	_peer.session_description_created.connect(self._on_session_description_created)
-	_peer.ice_candidate_created.connect(self._on_ice_candidate_created)
-	_peer.data_channel_received.connect(self._on_data_channel_received)
+	session_description_created.connect(self._on_session_description_created)
+	ice_candidate_created.connect(self._on_ice_candidate_created)
 
-	initialize({"iceServers":[{"urls":["stun:stun.l.google.com:19302"]}]})
-
-	# Initialize deferred so the peer can be added to multiplayer first
-	Engine.get_main_loop().create_timer(0).timeout.connect(func():
-		_state = State.GATHERING
-		if type == "offer":
-			create_offer()
-		elif type == "answer":
-			assert(sdp != "", "Missing sdp")
-			_remote_sdp = sdp
-			set_remote_description("offer", sdp)
-
-		Engine.get_main_loop().process_frame.connect(self.poll) # Start the poll loop
-	)
+	var err := initialize({"iceServers":[{"urls":["stun:stun.l.google.com:19302"]}]})
+	if err != OK:
+		push_error("Initializing failed")
+		_state = State.CLOSED
 
 # Public methods
+func start() -> Error:
+	if _state != State.NEW:
+		push_error("Peer state is not new")
+		return Error.ERR_ALREADY_IN_USE
+
+	_state = State.GATHERING
+
+	if _type == "offer":
+		var err := create_offer()
+		if err != OK:
+			push_error("Creating offer failed")
+			return err
+	elif _type == "answer":
+		if _remote_sdp == "":
+			push_error("Missing sdp")
+			return Error.ERR_INVALID_DATA
+
+		var err := set_remote_description("offer", _remote_sdp)
+		if err != OK:
+			push_error("Creating answer failed")
+			return err
+	else:
+		push_error("Unknown type: ", _type)
+		return Error.ERR_INVALID_DATA
+
+	Engine.get_main_loop().process_frame.connect(self.__poll) # Start the poll loop
+	return Error.OK
+
 func set_peer_id(new_peer_id: String) -> void:
 	_peer_id = new_peer_id
 
 func set_offer_id(new_offer_id: String) -> void:
 	_offer_id = new_offer_id
 
-func set_answer(remote_sdp: String):
-	assert(_type == "offer", "The peer is not an offer")
-	assert(not _answered, "The offer was already answered")
+func set_answer(remote_sdp: String) -> Error:
+	if _type != "offer":
+		push_error("The peer is not an offer")
+		return Error.ERR_INVALID_DATA
+	if _answered:
+		push_error("The offer was already answered")
+		return Error.ERR_ALREADY_IN_USE
+
 	_answered = true
 	_remote_sdp = remote_sdp
-	set_remote_description("answer", remote_sdp)
+	return set_remote_description("answer", remote_sdp)
 
-func mark_as_announced():
-	assert(_announced == false, "Already announced")
+func mark_as_announced() -> Error:
+	if _announced:
+		push_error("The offer was already answered")
+		return Error.ERR_ALREADY_IN_USE
+		
 	_announced = true
+	return Error.OK
 
 # Private methods
-func _close(): # Virtual
+func __poll():
+	if _state == State.NEW or _state == State.CLOSED: return
+	poll()
+
+	if _state == State.GATHERING:
+		var gathering_state := get_gathering_state()
+		if gathering_state != WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
+			return
+
+		_state = State.CONNECTING
+		sdp_created.emit(_local_sdp)
+		connecting.emit()
+
+	var connection_state := get_connection_state()
+	if _state == State.CONNECTING:
+		if connection_state == WebRTCPeerConnection.STATE_CONNECTING:
+			return
+		if connection_state != WebRTCPeerConnection.STATE_CONNECTED:
+			__close()
+			return
+
+		_state = State.CONNECTED
+		connected.emit()
+
+	if _state == State.CONNECTED:
+		if connection_state != WebRTCPeerConnection.STATE_CONNECTED:
+			__close()
+			return
+
+func __close():
 	if _state == State.CLOSED:
 		return
 
-	_peer.close()
+	close()
 
 	if _state == State.CONNECTING:
 		connecting_failed.emit()
@@ -106,56 +160,10 @@ func _close(): # Virtual
 	_state = State.CLOSED
 	closed.emit()
 
-func _poll(): # Virtual
-	if _state == State.GATHERING:
-		get_gathering_state()
-	elif _state == State.CONNECTING or _state == State.CONNECTED:
-		get_connection_state()
-	return _peer.poll()
-
-func _get_gathering_state(): # Virtual
-	var gathering_state := _peer.get_gathering_state()
-
-	if _state == State.GATHERING and gathering_state == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
-		_state = State.CONNECTING
-		sdp_created.emit(_local_sdp)
-		connecting.emit()
-
-	return gathering_state
-
-func _get_connection_state(): # Virtual
-	var connection_state := _peer.get_connection_state()
-
-	if _state == State.CONNECTING and connection_state != WebRTCPeerConnection.STATE_CONNECTING:
-		if connection_state != WebRTCPeerConnection.STATE_CONNECTED:
-			close()
-		else:
-			_state = State.CONNECTED
-			connected.emit()
-
-	if _state == State.CONNECTED:
-		if connection_state != WebRTCPeerConnection.STATE_CONNECTED:
-			close()
-
-	return connection_state
-
-func _add_ice_candidate(p_sdp_mid_name: String, p_sdp_mline_index: int, p_sdp_name: String): return _peer.add_ice_candidate(p_sdp_mid_name, p_sdp_mline_index, p_sdp_name)
-func _create_data_channel(p_label: String, p_config: Dictionary): return _peer.create_data_channel(p_label, p_config)
-func _create_offer(): return _peer.create_offer()
-func _get_signaling_state(): return _peer.get_signaling_state()
-func _initialize(p_config: Dictionary): return _peer.initialize(p_config)
-func _set_local_description(p_type: String, p_sdp: String): return _peer.set_local_description(p_type, p_sdp)
-func _set_remote_description(p_type: String, p_sdp: String): return _peer.set_remote_description(p_type, p_sdp)
-
 # Callbacks
 func _on_session_description_created(type: String, sdp: String):
 	_local_sdp = sdp
-	session_description_created.emit(type, sdp)
 	set_local_description(type, sdp)
 
 func _on_ice_candidate_created(media: String, index: int, name: String):
 	_local_sdp += "a=%s\r\n" % [name]
-	ice_candidate_created.emit(media, index, name)
-
-func _on_data_channel_received(channel: WebRTCDataChannel):
-	data_channel_received.emit(channel)

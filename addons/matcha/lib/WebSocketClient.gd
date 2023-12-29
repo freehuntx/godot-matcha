@@ -43,21 +43,34 @@ func _init(url: String, options:={}) -> void:
 	Engine.get_main_loop().process_frame.connect(self._start, CONNECT_ONE_SHOT)
 
 # Public methods
-func send(data, mode=_options.mode) -> void:
-	assert(is_connected, "NOT_CONNECTED")
+func send(data, mode=_options.mode) -> Error:
+	if not is_connected:
+		push_error("NOT_CONNECTED")
+		return Error.ERR_CONNECTION_ERROR
 
 	if mode == Mode.BYTES and typeof(data) != TYPE_PACKED_BYTE_ARRAY:
-		if typeof(data) == TYPE_STRING: data = data.to_utf8_buffer()
-		else: assert(false, "UNKNOWN_TYPE")
+		if typeof(data) == TYPE_STRING:
+			data = data.to_utf8_buffer()
+		else:
+			push_error("UNKOWN_TYPE")
+			return Error.ERR_INVALID_DATA
 	elif mode == Mode.TEXT and typeof(data) != TYPE_STRING:
-		if typeof(data) == TYPE_PACKED_BYTE_ARRAY: data = data.get_string_from_utf8()
-		else: assert(false, "UNKNOWN_TYPE")
+		if typeof(data) == TYPE_PACKED_BYTE_ARRAY:
+			data = data.get_string_from_utf8()
+		else:
+			push_error("UNKNOWN_TYPE")
+			return Error.ERR_INVALID_DATA
 	elif mode == Mode.JSON:
 		data = JSON.stringify(data)
-		if data == null: assert(false, "INVALID_JSON")
+		if data == null:
+			push_error("INVALID_JSON")
+			return Error.ERR_INVALID_DATA
 
-	assert(typeof(data) == TYPE_STRING, "INVALID_DATA")
-	_socket.send_text(data)
+	if typeof(data) != TYPE_STRING:
+		push_error("INVALID_DATA")
+		return Error.ERR_INVALID_DATA
+
+	return _socket.send_text(data)
 
 func close(was_error=false) -> void:
 	if _socket != null:

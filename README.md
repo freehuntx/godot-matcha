@@ -64,13 +64,13 @@ func _init():
 
 # Changelog
 ### 29. Dec. 2023
+- Replaced asserts with push_error + Error return value
+  - This fixed some nasty invisible bugs
 - Added example for server/client implementation
 - Improved MatchaPeer class
-  - Made it extend from WebRTCPeerConnectionExtension
-    - This allows you to use it like an WebRTCPeerConnection
+  - Made it extend from WebRTCPeerConnection
 - Improved MatchaRoom class
-  - Made it extend from MultiplayerPeerExtension
-    - This allows you to use it like an MultiplayerPeer
+  - Made it extend from MultiplayerPeer
   - Added peer_joined/peer_left signals for direct access to the peer
   - Changed naming from info_hash to room_id
   - Added client/server/mesh functionality
