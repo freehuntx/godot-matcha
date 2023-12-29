@@ -20,5 +20,13 @@ offset_right = 608.0
 offset_bottom = 298.0
 text = "Start lobby"
 
+[node name="server_client_btn" type="Button" parent="."]
+offset_left = 506.0
+offset_top = 334.0
+offset_right = 623.0
+offset_bottom = 365.0
+text = "Server / Client"
+
 [connection signal="pressed" from="bobble_btn" to="." method="_on_bobble_btn_pressed"]
 [connection signal="pressed" from="lobby_btn" to="." method="_on_lobby_btn_pressed"]
+[connection signal="pressed" from="server_client_btn" to="." method="_on_server_client_btn_pressed"]

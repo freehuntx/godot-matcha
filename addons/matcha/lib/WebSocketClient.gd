@@ -1,3 +1,5 @@
+# TODO: DOCUMENT, DOCUMENT, DOCUMENT!
+
 extends RefCounted
 
 # Signals
@@ -12,9 +14,11 @@ enum Mode { BYTES, TEXT, JSON }
 enum State { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
 # Members
+var _user_agent: String
 var _state := State.DISCONNECTED
 var _url: String
 var _socket: WebSocketPeer
+var _reconnect_try_counter := 0
 var _options: Dictionary
 
 # Getters
@@ -24,8 +28,17 @@ var is_connected:
 # Constructor
 func _init(url: String, options:={}) -> void:
 	if not "mode" in options: options.mode = Mode.BYTES
+	if not "reconnect_tries" in options: options.reconnect_tries = 0
 	_url = url
 	_options = options
+
+	_user_agent = "Matcha/0.0.0 (%s; %s; %s) Godot/%s" % [
+		OS.get_name(),
+		OS.get_version(),
+		Engine.get_architecture_name(),
+		Engine.get_version_info().string.split(" ")[0]
+	]
+
 	Engine.get_main_loop().process_frame.connect(self._poll)
 	Engine.get_main_loop().process_frame.connect(self._start, CONNECT_ONE_SHOT)
 
@@ -50,12 +63,20 @@ func close(was_error=false) -> void:
 	if _socket != null:
 		_socket.close()
 		_socket = null
+
 	if _state == State.CONNECTING:
 		_state = State.DISCONNECTED
+
 	if _state == State.CONNECTED:
 		_state = State.DISCONNECTED
 		disconnected.emit()
-	if was_error and _state != State.RECONNECTING and "reconnect_time" in _options:
+
+	if was_error and _state != State.RECONNECTING and _options.reconnect_tries > 0:
+		_reconnect_try_counter += 1
+
+		if _reconnect_try_counter > _options.reconnect_tries:
+			return
+
 		_state = State.RECONNECTING
 		reconnecting.emit()
 		Engine.get_main_loop().create_timer(_options.reconnect_time).timeout.connect(func():
@@ -65,29 +86,37 @@ func close(was_error=false) -> void:
 
 # Private methods
 func _start() -> void:
-	if _socket != null: close()
+	if _socket != null:
+		close()
+
 	_socket = WebSocketPeer.new()
+
 	if OS.get_name() != "Web":
-		_socket.handshake_headers = PackedStringArray([
-			"user-agent: lel"
-		])
+		# When not in web we should use an useragent. Some servers dont accept requests without an user-agent
+		_socket.handshake_headers = PackedStringArray([ "user-agent: %s" % [_user_agent] ])
+
 	if _socket.connect_to_url(_url) != OK:
 		close(true)
 		return
+
 	_state = State.CONNECTING
 	connecting.emit()
 
 func _poll() -> void:
 	if _socket == null: return
 	_socket.poll()
+
 	var state = _socket.get_ready_state()
 	if state == WebSocketPeer.STATE_CLOSED:
 		close(true)
 		return
+
 	if state != WebSocketPeer.STATE_OPEN:
 		return
+
 	if _state != State.CONNECTED:
 		_state = State.CONNECTED
+		_reconnect_try_counter = 0
 		connected.emit()
 
 	while _socket.get_available_packet_count():
@@ -99,6 +128,9 @@ func _on_packet(buffer: PackedByteArray) -> void:
 	elif _options.mode == Mode.TEXT:
 		message.emit(buffer.get_string_from_utf8())
 	elif _options.mode == Mode.JSON:
-		var data = JSON.parse_string(buffer.get_string_from_utf8())
-		if data == null: assert(false, "INVALID_JSON")
-		message.emit(data)
+		var str := buffer.get_string_from_utf8()
+		var data = JSON.parse_string(str)
+		if data == null:
+			push_error("[WebSocketClient] Invalid json: %s" % [str])
+		else:
+			message.emit(data)

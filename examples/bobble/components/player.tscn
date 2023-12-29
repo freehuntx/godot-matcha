@@ -7,14 +7,14 @@ size = Vector2(30, 30)
 
 [sub_resource type="CanvasTexture" id="CanvasTexture_8dapy"]
 
-[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_j4wkt"]
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_6io5i"]
 properties/0/path = NodePath(".:position")
 properties/0/spawn = true
 properties/0/replication_mode = 1
-properties/1/path = NodePath(".:velocity")
+properties/1/path = NodePath("Label:text")
 properties/1/spawn = true
 properties/1/replication_mode = 1
-properties/2/path = NodePath("Label:text")
+properties/2/path = NodePath(".:velocity")
 properties/2/spawn = true
 properties/2/replication_mode = 1
 
@@ -38,4 +38,4 @@ offset_bottom = 136.0
 horizontal_alignment = 1
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
-replication_config = SubResource("SceneReplicationConfig_j4wkt")
+replication_config = SubResource("SceneReplicationConfig_6io5i")

@@ -5,8 +5,6 @@
 [node name="Bobble" type="Node2D"]
 script = ExtResource("1_67bh4")
 
-[node name="Players" type="Node2D" parent="."]
-
 [node name="UI" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 0
@@ -22,5 +20,7 @@ offset_top = 10.0
 offset_right = 1071.0
 offset_bottom = 54.0
 placeholder_text = "Type a chat message..."
+
+[node name="Players" type="Node2D" parent="."]
 
 [connection signal="text_submitted" from="UI/LineEdit" to="." method="_on_line_edit_text_submitted"]

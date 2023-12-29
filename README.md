@@ -11,35 +11,79 @@ I plan on improving this library and add more features. Stay tuned!
 3. Done!
 
 ## Usage
-Example:
+### Example (Mesh):
+
 ```
 extends Node
 
-var room1 := MatchaRoom.new({ "identifier": "my-unique-game-identifier" })
-var room2 := MatchaRoom.new({ "identifier": "my-unique-game-identifier" })
+var mp1 := MatchaRoom.create_mesh_room({ "identifier": "my-unique-game-identifier" })
+var mp2 := MatchaRoom.create_mesh_room({ "identifier": "my-unique-game-identifier" })
 
 func _init():
-	var rtc1: WebRTCMultiplayerPeer = room1.rtc_peer
-	var rtc2: WebRTCMultiplayerPeer = room1.rtc_peer
-
-	rtc1.peer_connected.connect(func(id):
-		print("(1) Peer connected: ", id)
+	mp1.peer_joined.connect(func(_id, peer):
+		print("(1) Peer connected: ", peer.peer_id)
 	)
 
-	rtc1.peer_disconnected.connect(func(id):
-		print("(1) Peer disconnected: ", id)
+	mp1.peer_left.connect(func(_id, peer):
+		print("(1) Peer disconnected: ", peer.peer_id)
 	)
 
-	rtc2.peer_connected.connect(func(id):
-		print("(2) Peer connected: ", id)
+	mp2.peer_joined.connect(func(_id, peer):
+		print("(2) Peer connected: ", peer.peer_id)
 	)
 
-	rtc2.peer_disconnected.connect(func(id):
-		print("(2) Peer disconnected: ", id)
+	mp2.peer_left.connect(func(_id, peer):
+		print("(2) Peer disconnected: ", peer.peer_id)
+	)
+```
+
+### Example (Server/Client):
+```
+extends Node
+
+var server := MatchaRoom.create_server_room()
+var client := MatchaRoom.create_client_room(server.room_id) # Client must know the room id
+
+func _init():
+	server.peer_joined.connect(func(_id, peer):
+		print("(server) Peer connected: ", peer.peer_id)
+	)
+
+	server.peer_left.connect(func(_id, peer):
+		print("(server) Peer disconnected: ", peer.peer_id)
+	)
+
+	client.peer_joined.connect(func(_id, peer):
+		print("(client) Peer connected: ", peer.peer_id)
+	)
+
+	client.peer_left.connect(func(_id, peer):
+		print("(client) Peer disconnected: ", peer.peer_id)
 	)
 ```
 
 # Changelog
+### 29. Dec. 2023
+- Added example for server/client implementation
+- Improved MatchaPeer class
+  - Made it extend from WebRTCPeerConnectionExtension
+    - This allows you to use it like an WebRTCPeerConnection
+- Improved MatchaRoom class
+  - Made it extend from MultiplayerPeerExtension
+    - This allows you to use it like an MultiplayerPeer
+  - Added peer_joined/peer_left signals for direct access to the peer
+  - Changed naming from info_hash to room_id
+  - Added client/server/mesh functionality
+- Improved TrackerClient class
+  - Proper user-agent for non-web environment
+  - Cleaner code
+  - More documentation
+- Prepared nostr implementation
+  - In the future you can use nostr aswell as webtorrent
+- Prepared lobby implementation
+  - In the future you can find/list/create lobbies
+
+
 ### 26. Dec. 2023
 - Replaces EventEmitter with native Signals
   - EventEmitter did not improve RefCounted reference issue behaviour so replaced it with signals
