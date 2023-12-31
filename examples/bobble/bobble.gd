@@ -23,14 +23,15 @@ func _add_player(peer_id: String, authority_id: int) -> void:
 
 	var node := PlayerComponent.instantiate()
 	node.name = peer_id # The node must have the same name for every person. Otherwise syncing it will fail because path mismatch
-	node.position = Vector2(100, 100)
+	node.position = Vector2(randi() % 500, randi() % 500)
 	players[peer_id] = node
 	$Players.add_child(node)
 	node.set_multiplayer_authority(authority_id)
 
 func _remove_player(peer_id: String) -> void:
 	if not peer_id in players: return # That peer is not known
-	$Players.remove_child($Players.get_node(peer_id))
+	if $Players.has_node(peer_id):
+		$Players.remove_child($Players.get_node(peer_id))
 
 # Peer callbacks
 func _on_peer_joined(id: int, peer: MatchaPeer) -> void:
