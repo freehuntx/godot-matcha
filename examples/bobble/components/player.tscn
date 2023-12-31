@@ -1,6 +1,7 @@
-[gd_scene load_steps=5 format=3 uid="uid://bfl4yqr1c4mcq"]
+[gd_scene load_steps=6 format=3 uid="uid://bfl4yqr1c4mcq"]
 
 [ext_resource type="Script" path="res://examples/bobble/components/player.gd" id="1_co5g2"]
+[ext_resource type="Script" path="res://examples/bobble/components/player_synchronizer.gd" id="2_8iwx7"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_368qq"]
 size = Vector2(30, 30)
@@ -39,3 +40,4 @@ horizontal_alignment = 1
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
 replication_config = SubResource("SceneReplicationConfig_6io5i")
+script = ExtResource("2_8iwx7")

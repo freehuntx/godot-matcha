@@ -8,6 +8,7 @@ func set_message(message: String) -> void:
 	chat_message_time = Time.get_unix_time_from_system()
 
 func _handle_walk():
+	if get_multiplayer_authority() != multiplayer.get_unique_id(): return
 	var x_dir = Input.get_axis("ui_left", "ui_right")
 	var y_dir = Input.get_axis("ui_up", "ui_down")
 	
