@@ -22,6 +22,8 @@ var _answered := false
 var _type: String
 var _local_sdp: String
 var _remote_sdp: String
+var _event_channel: WebRTCDataChannel
+var _event_listener := {} # We store event callback functions in here
 
 var is_connected:
 	get: return _state == State.CONNECTED
@@ -56,10 +58,10 @@ func _init(type: String, offer_id: String, remote_sdp=""):
 	session_description_created.connect(self._on_session_description_created)
 	ice_candidate_created.connect(self._on_ice_candidate_created)
 
-	var err := initialize({"iceServers":[{"urls":["stun:stun.l.google.com:19302"]}]})
-	if err != OK:
+	if initialize({"iceServers":[{"urls":["stun:stun.l.google.com:19302"]}]}) != OK:
 		push_error("Initializing failed")
 		_state = State.CLOSED
+	_event_channel = create_data_channel("events", {"id": 555, "negotiated": true})
 
 # Public methods
 func start() -> Error:
@@ -116,8 +118,33 @@ func mark_as_announced() -> Error:
 	_announced = true
 	return Error.OK
 
+# Allows you to send an event.
+func send_event(event_name: String, event_args:=[]) -> Error:
+	var pack_array = [event_name]
+	if event_args.size() > 0:
+		pack_array.append(event_args)
+	return _event_channel.put_packet(Seriously.pack_to_bytes(pack_array))
+
+# Allows you to listen to an event just one time. If the event was triggered the listener is removed.
+func once_event(event_name: String, callback: Callable) -> Callable:
+	return on_event(event_name, callback, true)
+
+# Allows you to listen to an event. The return function can be used to remove that listener.
+func on_event(event_name: String, callback: Callable, once:=false) -> Callable:
+	if not event_name in _event_listener: _event_listener[event_name] = []
+
+	var listener = [callback, once]
+	_event_listener[event_name].append(listener)
+
+	return off_event.bind(event_name, callback, once)
+
+# Unregister an listener on an event
+func off_event(event_name: String, callback: Callable, once:=false) -> void:
+	if not event_name in _event_listener: return
+	_event_listener[event_name] = _event_listener[event_name].filter(func(e): return e[0] != callback and e[1] != once)
+
 # Private methods
-func __poll():
+func __poll() -> void:
 	if _state == State.NEW or _state == State.CLOSED: return
 	poll()
 
@@ -146,7 +173,17 @@ func __poll():
 			__close()
 			return
 
-func __close():
+	# Read all event packets
+	while _event_channel.get_available_packet_count():
+		var buffer := _event_channel.get_packet()
+		var args = Seriously.unpack_from_bytes(buffer)
+		if typeof(args) != TYPE_ARRAY or args.size() < 1 or typeof(args[0]) != TYPE_STRING:
+			continue
+		if args.size() == 2 and typeof(args[1]) != TYPE_ARRAY:
+			continue
+		_emit_event.callv(args)
+
+func __close() -> void:
 	if _state == State.CLOSED:
 		return
 
@@ -160,10 +197,26 @@ func __close():
 	_state = State.CLOSED
 	closed.emit()
 
+# Handle an event
+func _emit_event(event_name: String, event_args:=[]) -> void:
+	if not event_name in _event_listener: return
+
+	# Remove null instance callbacks
+	_event_listener[event_name] = _event_listener[event_name].filter(func(e): return e[0].get_object() != null)
+
+	for listener in _event_listener[event_name]:
+		listener[0].callv(event_args)
+
+	# Remove once listeners
+	_event_listener[event_name] = _event_listener[event_name].filter(func(e): return not e[1])
+
+	if _event_listener[event_name].size() == 0:
+		_event_listener.erase(event_name)
+
 # Callbacks
-func _on_session_description_created(type: String, sdp: String):
+func _on_session_description_created(type: String, sdp: String) -> void:
 	_local_sdp = sdp
 	set_local_description(type, sdp)
 
-func _on_ice_candidate_created(media: String, index: int, name: String):
+func _on_ice_candidate_created(media: String, index: int, name: String) -> void:
 	_local_sdp += "a=%s\r\n" % [name]

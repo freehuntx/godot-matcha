@@ -9,18 +9,47 @@ script = ExtResource("1_67bh4")
 layout_mode = 3
 anchors_preset = 0
 offset_left = -1.0
-offset_top = 577.0
-offset_right = 1152.0
-offset_bottom = 650.0
+offset_top = -2.0
+offset_right = 1196.0
+offset_bottom = 800.0
 
-[node name="LineEdit" type="LineEdit" parent="UI"]
+[node name="chat_history" type="RichTextLabel" parent="UI"]
+offset_left = 20.0
+offset_top = 597.0
+offset_right = 1024.0
+offset_bottom = 726.0
+text = "
+
+"
+scroll_following = true
+
+[node name="chat_input" type="LineEdit" parent="UI"]
 layout_mode = 0
-offset_left = 63.0
-offset_top = 10.0
-offset_right = 1071.0
-offset_bottom = 54.0
+offset_left = 18.0
+offset_top = 734.0
+offset_right = 1109.0
+offset_bottom = 778.0
 placeholder_text = "Type a chat message..."
+
+[node name="secret_button" type="Button" parent="UI"]
+layout_mode = 0
+offset_left = 1043.0
+offset_top = 622.0
+offset_right = 1186.0
+offset_bottom = 716.0
+text = "Secret button
+What will it do? :)"
+
+[node name="chat_send" type="Button" parent="UI"]
+layout_mode = 0
+offset_left = 1116.0
+offset_top = 734.0
+offset_right = 1186.0
+offset_bottom = 778.0
+text = "Send"
 
 [node name="Players" type="Node2D" parent="."]
 
-[connection signal="text_submitted" from="UI/LineEdit" to="." method="_on_line_edit_text_submitted"]
+[connection signal="text_submitted" from="UI/chat_input" to="." method="_on_line_edit_text_submitted"]
+[connection signal="pressed" from="UI/secret_button" to="." method="_on_secret_button_pressed"]
+[connection signal="pressed" from="UI/chat_send" to="." method="_on_chat_send_pressed"]

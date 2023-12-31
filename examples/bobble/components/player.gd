@@ -4,7 +4,6 @@ const SPEED = 300.0
 var chat_message_time: float
 
 func set_message(message: String) -> void:
-	if get_multiplayer_authority() != multiplayer.get_unique_id(): return
 	$Label.text = message
 	chat_message_time = Time.get_unix_time_from_system()
 
