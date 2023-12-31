@@ -97,3 +97,8 @@ func _init():
 ### 23. Dec. 2023
 - Initial commit
 - Exposed TrackerRoom class
+
+# Thanks to
+## dmotz - https://github.com/dmotz/trystero
+I got the idea for using webtorrent for signaling from that project.  
+Big thanks :)
