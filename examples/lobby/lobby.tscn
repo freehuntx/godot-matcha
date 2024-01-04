@@ -4,3 +4,76 @@
 
 [node name="Lobby" type="Node2D"]
 script = ExtResource("1_vobbu")
+
+[node name="room_label" type="Label" parent="."]
+offset_left = 234.0
+offset_top = 20.0
+offset_right = 307.0
+offset_bottom = 43.0
+text = "Room list"
+
+[node name="room_list" type="ItemList" parent="."]
+offset_left = 31.0
+offset_top = 55.0
+offset_right = 509.0
+offset_bottom = 663.0
+
+[node name="room_name_edit" type="TextEdit" parent="."]
+offset_left = 32.0
+offset_top = 679.0
+offset_right = 430.0
+offset_bottom = 711.0
+placeholder_text = "Room name"
+
+[node name="room_create_btn" type="Button" parent="."]
+offset_left = 436.0
+offset_top = 680.0
+offset_right = 507.0
+offset_bottom = 711.0
+text = "Create"
+
+[node name="room_join_btn" type="Button" parent="."]
+offset_left = 32.0
+offset_top = 721.0
+offset_right = 184.0
+offset_bottom = 752.0
+disabled = true
+text = "Join selected room"
+
+[node name="current_room" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_left = 611.0
+offset_right = 1197.0
+offset_bottom = 798.0
+
+[node name="room_label" type="Label" parent="current_room"]
+layout_mode = 2
+offset_left = 250.0
+offset_top = 23.0
+offset_right = 356.0
+offset_bottom = 46.0
+text = "Current room"
+
+[node name="room_log" type="RichTextLabel" parent="current_room"]
+layout_mode = 0
+offset_left = 25.0
+offset_top = 75.0
+offset_right = 530.0
+offset_bottom = 707.0
+scroll_following = true
+
+[node name="room_leave_btn" type="Button" parent="current_room"]
+layout_mode = 0
+offset_left = 468.0
+offset_top = 722.0
+offset_right = 521.0
+offset_bottom = 753.0
+disabled = true
+text = "Leave"
+
+[connection signal="empty_clicked" from="room_list" to="." method="_on_room_list_empty_clicked"]
+[connection signal="item_selected" from="room_list" to="." method="_on_room_list_item_selected"]
+[connection signal="pressed" from="room_create_btn" to="." method="_on_room_create_btn_pressed"]
+[connection signal="pressed" from="room_join_btn" to="." method="_on_room_join_btn_pressed"]
+[connection signal="pressed" from="current_room/room_leave_btn" to="." method="_on_room_leave_btn_pressed"]

@@ -34,21 +34,21 @@ func _remove_player(peer_id: String) -> void:
 		$Players.remove_child($Players.get_node(peer_id))
 
 # Peer callbacks
-func _on_peer_joined(id: int, peer: MatchaPeer) -> void:
+func _on_peer_joined(peer_rpc_id: int, peer: MatchaPeer) -> void:
 	# Listen to events the other peer may send
 	peer.on_event("chat", self._on_peer_chat.bind(peer))
 	peer.on_event("secret", self._on_peer_secret.bind(peer))
-	_add_player(peer.peer_id, id) # Create the player
+	_add_player(peer.id, peer_rpc_id) # Create the player
 
-func _on_peer_left(_id: int, peer: MatchaPeer) -> void:
-	_remove_player(peer.peer_id)
+func _on_peer_left(_peer_rpc_id: int, peer: MatchaPeer) -> void:
+	_remove_player(peer.id)
 
 func _on_peer_chat(message: String, peer: MatchaPeer) -> void:
-	$UI/chat_history.text += "\n%s: %s" % [peer.peer_id, message]
-	players[peer.peer_id].set_message(message)
+	$UI/chat_history.text += "\n%s: %s" % [peer.id, message]
+	players[peer.id].set_message(message)
 
 func _on_peer_secret(peer: MatchaPeer) -> void:
-	var sprite: Sprite2D = players[peer.peer_id].get_node("Sprite2D")
+	var sprite: Sprite2D = players[peer.id].get_node("Sprite2D")
 	sprite.modulate = Color.from_hsv((randi() % 12) / 12.0, 1, 1)
 
 # UI Callbacks

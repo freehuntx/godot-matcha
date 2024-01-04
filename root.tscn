@@ -5,28 +5,24 @@
 [node name="root" type="Node2D"]
 script = ExtResource("1_5f6ns")
 
-[node name="bobble_btn" type="Button" parent="."]
-offset_left = 508.0
-offset_top = 208.0
-offset_right = 612.0
-offset_bottom = 239.0
-text = "Start bobble"
-
-[node name="lobby_btn" type="Button" parent="."]
-visible = false
-offset_left = 515.0
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+offset_left = 492.0
 offset_top = 267.0
-offset_right = 608.0
-offset_bottom = 298.0
-text = "Start lobby"
+offset_right = 698.0
+offset_bottom = 428.0
 
-[node name="server_client_btn" type="Button" parent="."]
-offset_left = 506.0
-offset_top = 334.0
-offset_right = 623.0
-offset_bottom = 365.0
+[node name="bobble_btn" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Bobble (mesh)"
+
+[node name="lobby_btn" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Lobby"
+
+[node name="server_client_btn" type="Button" parent="VBoxContainer"]
+layout_mode = 2
 text = "Server / Client"
 
-[connection signal="pressed" from="bobble_btn" to="." method="_on_bobble_btn_pressed"]
-[connection signal="pressed" from="lobby_btn" to="." method="_on_lobby_btn_pressed"]
-[connection signal="pressed" from="server_client_btn" to="." method="_on_server_client_btn_pressed"]
+[connection signal="pressed" from="VBoxContainer/bobble_btn" to="." method="_on_bobble_btn_pressed"]
+[connection signal="pressed" from="VBoxContainer/lobby_btn" to="." method="_on_lobby_btn_pressed"]
+[connection signal="pressed" from="VBoxContainer/server_client_btn" to="." method="_on_server_client_btn_pressed"]

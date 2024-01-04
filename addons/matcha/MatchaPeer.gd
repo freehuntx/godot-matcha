@@ -15,7 +15,7 @@ signal sdp_created(sdp: String)
 
 # Members
 var _announced := false
-var _peer_id: String
+var _id: String
 var _offer_id: String
 var _state := State.NEW
 var _answered := false
@@ -29,8 +29,6 @@ var is_connected:
 	get: return _state == State.CONNECTED
 var type:
 	get: return _type
-var offer_id:
-	get: return _offer_id
 var gathered:
 	get: return _state > State.GATHERING
 var announced:
@@ -39,8 +37,12 @@ var answered:
 	get: return _answered
 var local_sdp:
 	get: return _local_sdp
-var peer_id:
-	get: return _peer_id
+var id:
+	get: return _id
+	set(value): _id = value
+var offer_id:
+	get: return _offer_id
+	set(value): _offer_id = value
 
 # Static methods
 static func create_offer_peer(offer_id := Utils.gen_id()) -> MatchaPeer:
@@ -91,12 +93,6 @@ func start() -> Error:
 
 	Engine.get_main_loop().process_frame.connect(self.__poll) # Start the poll loop
 	return Error.OK
-
-func set_peer_id(new_peer_id: String) -> void:
-	_peer_id = new_peer_id
-
-func set_offer_id(new_offer_id: String) -> void:
-	_offer_id = new_offer_id
 
 func set_answer(remote_sdp: String) -> Error:
 	if _type != "offer":

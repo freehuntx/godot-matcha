@@ -16,11 +16,11 @@ signal peer_left(rpc_id: int, peer: MatchaPeer) # Emitted when a peer left the r
 var _state := State.NEW # Internal state
 var _tracker_urls := [] # A list of tracker urls
 var _tracker_clients: Array[TrackerClient] = [] # A list of tracker clients we use to share/get offers/answers
-var _room_id: String # An unique identifier
+var _id: String # An unique id for this room
 var _peer_id := Utils.gen_id()
 var _type: String
-var _offer_timeout := 30
-var _pool_size := 10
+var _offer_timeout := 120
+var _pool_size := 40
 var _connected_peers = {}
 
 # Getters
@@ -30,9 +30,11 @@ var peer_id:
 	get: return _peer_id
 var type:
 	get: return _type
-var room_id:
-	get: return _room_id
-var _peers:
+var id:
+	get: return _id
+var connected_peers:
+	get: return _connected_peers.values()
+var peers:
 	get: return get_peers().values().map(func(v): return v.connection)
 
 # Static methods
@@ -54,14 +56,14 @@ func _init(options:={}):
 	if not "pool_size" in options: options.pool_size = _pool_size
 	if not "offer_timeout" in options: options.offer_timeout = _offer_timeout
 	if not "identifier" in options: options.identifier = "com.matcha.default"
-	if not "tracker_urls" in options: options.tracker_urls = ["wss://tracker.webtorrent.dev"]
+	if not "tracker_urls" in options: options.tracker_urls = ["wss://tracker.openwebtorrent.com", "wss://tracker.files.fm:7073/announce"]
 	if not "room_id" in options: options.room_id = options.identifier.sha1_text().substr(0, 20)
 	if not "type" in options: options.type = "mesh"
 	if not "autostart" in options: options.autostart = true
 	_tracker_urls = options.tracker_urls
 	_pool_size = options.pool_size
 	_offer_timeout = options.offer_timeout
-	_room_id = options.room_id
+	_id = options.room_id
 	_type = options.type
 
 	peer_connected.connect(self._on_peer_connected)
@@ -89,7 +91,7 @@ func start() -> Error:
 			push_error("Creating client failed")
 			return err
 	elif _type == "server":
-		_room_id = _peer_id # Our room_id should be our peer_id to identify ourself as the server
+		_id = _peer_id # Our room_id should be our peer_id to identify ourself as the server
 		var err := create_server()
 		if err != OK:
 			push_error("Creating server failed")
@@ -111,7 +113,7 @@ func start() -> Error:
 
 func find_peers(filter:={}) -> Array[MatchaPeer]:
 	var result: Array[MatchaPeer] = []
-	for peer in _peers:
+	for peer in peers:
 		var matched := true
 		for key in filter:
 			if not key in peer or peer[key] != filter[key]:
@@ -129,9 +131,9 @@ func find_peer(filter:={}, allow_multiple_results:=false) -> MatchaPeer:
 
 # Broadcast an event to everybody in this room or just specific peers. (List of peer_id)
 func send_event(event_name: String, event_args:=[], target_peer_ids:=[]):
-	for peer: MatchaPeer in _peers:
+	for peer: MatchaPeer in peers:
 		if not peer.is_connected: continue
-		if target_peer_ids.size() > 0 and not target_peer_ids.has(peer.peer_id): continue
+		if target_peer_ids.size() > 0 and not target_peer_ids.has(peer.id): continue
 		peer.send_event(event_name, event_args)
 
 # Private methods
@@ -189,19 +191,19 @@ func _handle_offers_announcment():
 		offer_peer.mark_as_announced()
 
 	for tracker_client in _tracker_clients: # Announce the offers via every tracker
-		tracker_client.announce(_room_id, announce_offers)
+		tracker_client.announce(_id, announce_offers)
 
 func _send_answer_sdp(answer_sdp: String, peer: MatchaPeer, tracker_client: TrackerClient):
-	tracker_client.answer(_room_id, peer.peer_id, peer.offer_id, answer_sdp)
+	tracker_client.answer(_id, peer.id, peer.offer_id, answer_sdp)
 
 func _on_got_offer(offer: TrackerClient.Response, tracker_client: TrackerClient) -> void:
-	if offer.info_hash != _room_id: return
-	if find_peer({ "peer_id": offer.peer_id }) != null: return # Ignore if the peer is already known
-	if _type == "client" and offer.peer_id != room_id: return # Ignore offers from others than host (in client mode)
+	if offer.info_hash != _id: return
+	if find_peer({ "id": offer.peer_id }) != null: return # Ignore if the peer is already known
+	if _type == "client" and offer.peer_id != _id: return # Ignore offers from others than host (in client mode)
 
 	var answer_peer := MatchaPeer.create_answer_peer(offer.offer_id, offer.sdp)
 	var answer_rpc_id := 1 if _type == "client" else generate_unique_id()
-	answer_peer.set_peer_id(offer.peer_id)
+	answer_peer.id = offer.peer_id
 
 	answer_peer.sdp_created.connect(self._send_answer_sdp.bind(answer_peer, tracker_client))
 	add_peer(answer_peer, answer_rpc_id)
@@ -210,30 +212,30 @@ func _on_got_offer(offer: TrackerClient.Response, tracker_client: TrackerClient)
 		remove_peer(answer_rpc_id)
 
 func _on_got_answer(answer: TrackerClient.Response, tracker_client: TrackerClient) -> void:
-	if answer.info_hash != _room_id: return
-	if _type == "client" and answer.peer_id != room_id: return # As client we just accept answers from the host
+	if answer.info_hash != _id: return
+	if _type == "client" and answer.peer_id != _id: return # As client we just accept answers from the host
 
 	var offer_peer: MatchaPeer
 	if _type == "client":
 		if has_peer(1):
 			offer_peer = get_peer(1).connection
-			offer_peer.set_offer_id(answer.offer_id) # Fix the offer_id since we gave the server alot of offers to choose from
+			offer_peer.offer_id = answer.offer_id # Fix the offer_id since we gave the server alot of offers to choose from
 	else:
 		offer_peer = find_peer({ "offer_id": answer.offer_id })
 	if offer_peer == null: return # Ignore if we dont know that offer
 
-	offer_peer.set_peer_id(answer.peer_id)
+	offer_peer.id = answer.peer_id
 	offer_peer.set_answer(answer.sdp)
 
 func _on_failure(reason: String, tracker_client: TrackerClient) -> void:
 	print("Tracker failure: ", reason, ", Tracker: ", tracker_client.tracker_url)
 
-func _on_peer_connected(id: int):
-	var peer: MatchaPeer = get_peer(id).connection
-	_connected_peers[id] = peer
-	peer_joined.emit(id, peer)
+func _on_peer_connected(rpc_id: int):
+	var peer: MatchaPeer = get_peer(rpc_id).connection
+	_connected_peers[rpc_id] = peer
+	peer_joined.emit(rpc_id, peer)
 
-func _on_peer_disconnected(id: int):
-	var peer: MatchaPeer = _connected_peers[id]
-	_connected_peers.erase(id)
-	peer_left.emit(id, peer)
+func _on_peer_disconnected(rpc_id: int):
+	var peer: MatchaPeer = _connected_peers[rpc_id]
+	_connected_peers.erase(rpc_id)
+	peer_left.emit(rpc_id, peer)

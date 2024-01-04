@@ -1,6 +1,7 @@
 # TODO: DOCUMENT, DOCUMENT, DOCUMENT!
 
 extends RefCounted
+const Constants := preload("../Constants.gd")
 
 # Signals
 signal disconnected
@@ -32,7 +33,8 @@ func _init(url: String, options:={}) -> void:
 	_url = url
 	_options = options
 
-	_user_agent = "Matcha/0.0.0 (%s; %s; %s) Godot/%s" % [
+	_user_agent = "Matcha/%s (%s; %s; %s) Godot/%s" % [
+		Constants.VERSION,
 		OS.get_name(),
 		OS.get_version(),
 		Engine.get_architecture_name(),
@@ -88,6 +90,7 @@ func close(was_error=false) -> void:
 		_reconnect_try_counter += 1
 
 		if _reconnect_try_counter > _options.reconnect_tries:
+			push_error("Websocket retries exceeded")
 			return
 
 		_state = State.RECONNECTING
