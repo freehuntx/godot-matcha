@@ -22,6 +22,7 @@ func _exit_tree():
 
 func _ready():
 	_add_player(room.peer_id) # Add ourself
+	$UI/con_count_label.text = "Players: %s" % players.size()
 
 func _add_player(peer_id: int) -> void:
 	if peer_id in players: return # That peer is already known
@@ -37,13 +38,16 @@ func _remove_player(peer_id: int) -> void:
 	if not peer_id in players: return # That peer is not known
 	if $Players.has_node("%s" % peer_id):
 		$Players.remove_child($Players.get_node("%s" % peer_id))
+		players.erase(peer_id)
 
 # Peer callbacks
 func _on_peer_joined(peer_id: int) -> void:
 	_add_player(peer_id) # Create the player
+	$UI/con_count_label.text = "Players: %s" % players.size()
 
 func _on_peer_left(peer_id: int) -> void:
 	_remove_player(peer_id)
+	$UI/con_count_label.text = "Players: %s" % players.size()
 
 func _on_room_event(peer_id: int, event_name: String, event_args: Array, _broadcast: bool) -> void:
 	if not peer_id in players:

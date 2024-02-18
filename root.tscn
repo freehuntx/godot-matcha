@@ -23,6 +23,11 @@ text = "Lobby"
 layout_mode = 2
 text = "Server / Client"
 
+[node name="spam_btn" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Spam"
+
 [connection signal="pressed" from="VBoxContainer/bobble_btn" to="." method="_on_bobble_btn_pressed"]
 [connection signal="pressed" from="VBoxContainer/lobby_btn" to="." method="_on_lobby_btn_pressed"]
 [connection signal="pressed" from="VBoxContainer/server_client_btn" to="." method="_on_server_client_btn_pressed"]
+[connection signal="pressed" from="VBoxContainer/spam_btn" to="." method="_on_spam_btn_pressed"]

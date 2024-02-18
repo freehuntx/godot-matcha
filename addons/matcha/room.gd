@@ -2,6 +2,7 @@ extends RefCounted
 const MQTTMessenger := preload("./mqtt/messenger.gd")
 
 enum Mode { NONE, CLIENT, SERVER, MESH }
+enum State { NONE, LEFT, JOINING, JOINED }
 
 signal joining
 signal joined
@@ -13,11 +14,13 @@ signal event(peer_id: int, name: String, args: Array, broadcast: bool)
 
 ## Members
 var _mode := Mode.NONE
+var _state := State.NONE
 var _peer_id: int
 var _room_id: String
 var _mqtt_messenger := MQTTMessenger.new()
 var _multiplayer_peer := WebRTCMultiplayerPeer.new()
 var _clients := {}
+var _join_time: float
 
 var peer_id: int:
 	get: return _peer_id
@@ -46,7 +49,7 @@ func create_server() -> Error:
 	if err != OK:
 		return err
 
-	err = _mqtt_messenger.join(_mqtt_messenger.peer_id)
+	err = _mqtt_messenger.join(_mqtt_messenger.client_id, JSON.stringify({ op="leave" }))
 	if err == OK:
 		_mode = Mode.SERVER
 		_room_id = _mqtt_messenger.client_id
@@ -55,11 +58,15 @@ func create_server() -> Error:
 	return err
 
 func create_client(room_id: String) -> Error:
+	if room_id.length() != 20:
+		push_error("Invalid room id! Must be 20 characters long.")
+		return ERR_INVALID_PARAMETER
+
 	var err := _multiplayer_peer.create_client(_multiplayer_peer.generate_unique_id())
 	if err != OK:
 		return err
 
-	err = _mqtt_messenger.join(room_id)
+	err = _mqtt_messenger.join(room_id, JSON.stringify({ op="leave" }))
 	if err == OK:
 		_mode = Mode.CLIENT
 		_room_id = room_id
@@ -68,11 +75,16 @@ func create_client(room_id: String) -> Error:
 	return err
 
 func create_mesh(room_id: String) -> Error:
+	if room_id.length() != 20 or not room_id.is_valid_hex_number():
+		room_id = room_id.sha256_text().substr(0, 20)
+		#push_error("Invalid room id! Must be 20 characters long. Forgot to hash it?")
+		#return ERR_INVALID_PARAMETER
+
 	var err := _multiplayer_peer.create_mesh(_multiplayer_peer.generate_unique_id())
 	if err != OK:
 		return err
 
-	err = _mqtt_messenger.join(room_id)
+	err = _mqtt_messenger.join(room_id, JSON.stringify({ op="leave" }))
 	if err  == OK:
 		_mode = Mode.MESH
 		_room_id = room_id
@@ -94,6 +106,7 @@ func leave() -> Error:
 	_mqtt_messenger = null
 	_multiplayer_peer = null
 	_clients = {}
+	_state = State.LEFT
 	left.emit()
 	return OK
 
@@ -129,142 +142,176 @@ func poll() -> void:
 			event.emit(client.peer_id, args[0], event_args, args[1])
 
 ## Callbacks
+# Callbacks: Mqtt Messenger
 func _on_messenger_connecting() -> void:
+	_state = State.JOINING
 	joining.emit()
 
 func _on_messenger_connected() -> void:
+	_state = State.JOINED
 	joined.emit()
+	_join_time = Time.get_unix_time_from_system()
 	_mqtt_messenger.send_message(JSON.stringify({
 		"op": "join",
 		"peer_id": _peer_id
 	}))
 
 func _on_messenger_closed() -> void:
+	_state = State.LEFT
 	left.emit()
 
 func _on_messenger_connect_failed() -> void:
+	_state = State.NONE
 	joining_failed.emit()
 
 func _on_messenger_message(client_id: String, message: String, sender_pub_key: String, private: bool) -> void:
+	if _state != State.JOINED:
+		return
+
 	var packet := JSON.parse_string(message)
 	if typeof(packet) != TYPE_DICTIONARY or not "op" in packet or typeof(packet.op) != TYPE_STRING:
 		return
 
 	if packet.op == "join":
-		if client_id in _clients:
-			return
 		if not "peer_id" in packet or is_nan(packet.peer_id):
 			return
-		if _multiplayer_peer.has_peer(packet.peer_id):
-			return
-		if _mode == Mode.CLIENT:
-			if packet.peer_id != 1 or client_id != _room_id:
-				return
 
-		var client := { "id": client_id, "peer_id": packet.peer_id, "local_sdp": "" }
-		var webrtc_peer := WebRTCPeerConnection.new()
-		webrtc_peer.ice_candidate_created.connect(func(media: String, index: int, name: String):
-			client.local_sdp += "a=%s\n" % name
-		)
-		webrtc_peer.session_description_created.connect(func(type: String, sdp: String):
-			client.local_sdp = sdp
-			webrtc_peer.set_local_description("offer", sdp)
-		)
-
-		if webrtc_peer.initialize({ "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}] }) != OK:
+		await _on_peer_join_message(client_id, packet.peer_id, sender_pub_key)
+	elif packet.op == "offer":
+		if not "peer_id" in packet or is_nan(packet.peer_id):
 			return
+		if not "sdp" in packet or typeof(packet.sdp) != TYPE_STRING:
+			return
+
+		await _on_peer_offer_message(client_id, packet.peer_id, sender_pub_key, packet.sdp)
+	elif packet.op == "answer":
+		if not "sdp" in packet or typeof(packet.sdp) != TYPE_STRING:
+			return
+
+		await _on_peer_answer_message(client_id, sender_pub_key, packet.sdp)
+	elif packet.op == "leave":
+		await _on_peer_leave_message(client_id, sender_pub_key)
+	else:
+		push_error("Unknown op: ", packet.op)
+
+# Callbacks: OP messages
+func _on_peer_leave_message(client_id: String, sender_pub_key: String) -> void:
+	if not client_id in _clients:
+		return
+
+	var client = _clients[client_id]
+	if _multiplayer_peer.has_peer(client.peer_id):
+		_multiplayer_peer.remove_peer(client.peer_id)
+
+	_clients.erase(client_id)
+
+func _on_peer_join_message(client_id: String, peer_id: int, peer_pub_key: String) -> void:
+	if client_id in _clients:
+		return # Should not happen
+	if _multiplayer_peer.has_peer(peer_id):
+		return # Should not exist
+
+	# In client mode make sure we are talking to the server
+	if _mode == Mode.CLIENT:
+		if peer_id != 1 or client_id != _room_id:
+			return
+
+	var peer := WebRTCPeerConnection.new()
+	var client := { "id": client_id, "peer_id": peer_id, "event_channel": null, "local_sdp": "" }
+
+	peer.session_description_created.connect(func(type: String, sdp: String):
+		client.local_sdp = sdp
+		peer.set_local_description("offer", sdp)
+	)
+	peer.ice_candidate_created.connect(func(media: String, index: int, name: String):
+		client.local_sdp += "a=%s\n" % name
+	)
+
+	if peer.initialize({ "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}] }) != OK:
+		return
 			
-		_multiplayer_peer.add_peer(webrtc_peer, packet.peer_id)
-		client.event_channel = webrtc_peer.create_data_channel("events", {"id": 555, "negotiated": true})
+	_multiplayer_peer.add_peer(peer, peer_id)
+	client.event_channel = peer.create_data_channel("events", {"id": 555, "negotiated": true})
 
-		if webrtc_peer.create_offer() != OK:
-			_multiplayer_peer.remove_peer(packet.peer_id)
+	if peer.create_offer() != OK:
+		_multiplayer_peer.remove_peer(peer_id)
+		return
+
+	_clients[client.id] = client
+
+	# Wait for sdp
+	while true:
+		await Engine.get_main_loop().process_frame
+		peer.poll()
+
+		if peer.get_gathering_state() == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
+			break
+
+	# TODO: Fix connecting state. Can be called too early?
+	_mqtt_messenger.send_message_to(JSON.stringify({
+		"op": "offer",
+		"peer_id": _peer_id,
+		"sdp": client.local_sdp
+	}), peer_pub_key)
+
+func _on_peer_offer_message(client_id: String, peer_id: int, peer_pub_key: String, offer_sdp: String) -> void:
+	var client: Dictionary
+
+	## Handle glare (both sent offer at the same time). Smaller id wins
+	if client_id in _clients: # This should just be the case, when we got a join and send an offer
+		if _peer_id < peer_id: # When our id is smaller, ignore this offer! We won!
 			return
 
+		_multiplayer_peer.remove_peer(peer_id) # Remove our offer peer. We lost!
+	else:
+		client = { "id": client_id, "peer_id": peer_id, "event_channel": null, "local_sdp": "" }
 		_clients[client.id] = client
 
-		# Wait for sdp
-		while true:
-			await Engine.get_main_loop().process_frame
-			webrtc_peer.poll()
+	var peer := WebRTCPeerConnection.new()
+	peer.session_description_created.connect(func(type: String, sdp: String):
+		client.local_sdp = sdp
+		peer.set_local_description("answer", sdp)
+	)
+	peer.ice_candidate_created.connect(func(media: String, index: int, name: String):
+		client.local_sdp += "a=%s\n" % name
+	)
 
-			if webrtc_peer.get_gathering_state() == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
-				break
-
-		# TODO: Fix connecting state. Can be called too early?
-		_mqtt_messenger.send_message_to(JSON.stringify({
-			"op": "offer",
-			"peer_id": _peer_id,
-			"sdp": client.local_sdp
-		}), sender_pub_key)
+	if peer.initialize({ "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}] }) != OK:
 		return
 
-	if packet.op == "offer":
-		if not "peer_id" in packet or is_nan(packet.peer_id):
-			return
-		if not "sdp" in packet or typeof(packet.sdp) != TYPE_STRING:
-			return
+	client.event_channel = peer.create_data_channel("events", {"id": 555, "negotiated": true})
+	_multiplayer_peer.add_peer(peer, peer_id)
 
-		var client: Dictionary
-
-		# Handle glare (both sent offer at the same time). Smaller id wins
-		if client_id in _clients:
-			client = _clients[client_id]
-
-			if _peer_id > client.peer_id:
-				_multiplayer_peer.remove_peer(client.peer_id)
-			else:
-				return
-		else:
-			client = { "id": client_id, "peer_id": packet.peer_id, "local_sdp": "" }
-			_clients[client.id] = client
-
-		var webrtc_peer := WebRTCPeerConnection.new()
-		webrtc_peer.ice_candidate_created.connect(func(media: String, index: int, name: String):
-			client.local_sdp += "a=%s\n" % name
-		)
-		webrtc_peer.session_description_created.connect(func(type: String, sdp: String):
-			client.local_sdp = sdp
-			webrtc_peer.set_local_description("answer", sdp)
-		)
-
-		if webrtc_peer.initialize({ "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}] }) != OK:
-			_clients.erase(client.id)
-			return
-
-		client.event_channel = webrtc_peer.create_data_channel("events", {"id": 555, "negotiated": true})
-		_multiplayer_peer.add_peer(webrtc_peer, packet.peer_id)
-
-		if webrtc_peer.set_remote_description("offer", packet.sdp) != OK:
-			_multiplayer_peer.remove_peer(packet.peer_id)
-			return
-
-		# Wait for sdp
-		while true:
-			await Engine.get_main_loop().process_frame
-			webrtc_peer.poll()
-
-			if webrtc_peer.get_gathering_state() == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
-				break
-
-		_mqtt_messenger.send_message_to(JSON.stringify({
-			"op": "answer",
-			"sdp": client.local_sdp
-		}), sender_pub_key)
+	if peer.set_remote_description("offer", offer_sdp) != OK:
+		_multiplayer_peer.remove_peer(peer_id)
 		return
 
-	if packet.op == "answer":
-		if not client_id in _clients:
-			return
-		if not "sdp" in packet or typeof(packet.sdp) != TYPE_STRING:
-			return
+	# Wait for sdp
+	while true:
+		await Engine.get_main_loop().process_frame
+		peer.poll()
 
-		var client: Dictionary = _clients[client_id]
-		if not _multiplayer_peer.has_peer(client.peer_id):
-			return
+		if peer.get_gathering_state() == WebRTCPeerConnection.GATHERING_STATE_COMPLETE:
+			break
 
-		_multiplayer_peer.get_peer(client.peer_id).connection.set_remote_description("answer", packet.sdp)
+	_mqtt_messenger.send_message_to(JSON.stringify({
+		"op": "answer",
+		"sdp": client.local_sdp
+	}), peer_pub_key)
 
+func _on_peer_answer_message(client_id: String, peer_pub_key: String, answer_sdp: String) -> void:
+	if not client_id in _clients:
+		return
+
+	var client: Dictionary = _clients[client_id]
+	if not _multiplayer_peer.has_peer(client.peer_id):
+		return
+
+	# TODO: Glare seems to still be a problem sometimes :/
+	var peer: WebRTCPeerConnection = _multiplayer_peer.get_peer(client.peer_id).connection
+	peer.set_remote_description("answer", answer_sdp)
+
+# Callbacks: Multiplayer peer
 func _on_peer_connected(peer_id: int) -> void:
 	peer_joined.emit(peer_id)
 

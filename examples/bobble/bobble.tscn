@@ -14,6 +14,7 @@ offset_right = 1196.0
 offset_bottom = 800.0
 
 [node name="chat_history" type="RichTextLabel" parent="UI"]
+layout_mode = 0
 offset_left = 20.0
 offset_top = 597.0
 offset_right = 1024.0
@@ -47,6 +48,12 @@ offset_top = 734.0
 offset_right = 1186.0
 offset_bottom = 778.0
 text = "Send"
+
+[node name="con_count_label" type="Label" parent="UI"]
+layout_mode = 0
+offset_right = 223.0
+offset_bottom = 23.0
+text = "Connections: 0"
 
 [node name="Players" type="Node2D" parent="."]
 
